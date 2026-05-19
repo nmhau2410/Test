@@ -1,0 +1,36 @@
+name: Auto Move Issue to In Progress on Branch Create
+
+on:
+  create: # Kích hoạt khi có bất kỳ nhánh (branch) mới nào được tạo
+
+jobs:
+  move-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract Issue Number and Move
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Lấy tên nhánh vừa được tạo (Ví dụ: 42-tet-nhan-tao)
+            const branchName = context.payload.ref;
+            
+            // Tìm số Issue từ đầu tên nhánh (Ví dụ: nhánh "42-tét-nhánh" thì lấy được số 42)
+            const match = branchName.match(/^(\d+)-/);
+            
+            if (match) {
+              const issueNumber = parseInt(match[1], 10);
+              console.log(`Phát hiện nhánh được tạo từ Issue số: #${issueNumber}`);
+              
+              // Gọi lệnh cập nhật trạng thái Issue trên bảng dự án thông qua API ngầm
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: 'open'
+              });
+              
+              console.log(`Đã gửi lệnh yêu cầu chuyển trạng thái cho Issue #${issueNumber}`);
+            } else {
+              console.log(`Nhánh "${branchName}" không bắt đầu bằng số Issue. Bỏ qua.`);
+            }
