@@ -1,118 +1,36 @@
 name: Auto Move Issue to In Progress on Branch Create
 
 on:
-  create:
+  create: # Kích hoạt khi có nhánh mới được tạo
 
 permissions:
   issues: write
   contents: read
-  repository-projects: write
 
 jobs:
   move-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Move Card to In Progress
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const branchName = context.payload.ref;
-            const match = branchName.match(/^(\d+)-/);
+      - name: Trích xuất số Issue và di chuyển card
+        run: |
+          # 1. Lấy tên nhánh vừa tạo từ biến hệ thống
+          BRANCH_NAME="${{ github.event.ref }}"
+          echo "Nhánh vừa tạo là: $BRANCH_NAME"
+          
+          # 2. Sử dụng Regex để kiểm tra cấu trúc tên nhánh (Ví dụ: "9-final" -> trích xuất số 9)
+          if [[ "$BRANCH_NAME" =~ ^([0-9]+)- ]]; then
+            ISSUE_NUMBER="${BASH_REMATCH[1]}"
+            echo "Phát hiện số hiệu Issue hợp lệ: #$ISSUE_NUMBER"
             
-            if (!match) {
-              console.log(`Nhánh "${branchName}" không bắt đầu bằng số Issue. Bỏ qua.`);
-              return;
-            }
+            # 3. Sử dụng GitHub CLI để gán nhãn tạm thời hoặc cập nhật ngầm Issue nhằm kích hoạt trigger đồng bộ
+            gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --add-label "in-progress-triggered"
             
-            const issueNumber = parseInt(match[1], 10);
-            console.log(`Phát hiện nhánh từ Issue số: #${issueNumber}`);
+            # Tự động xóa nhãn tạm ngay sau đó để giữ giao diện Issue sạch sẽ
+            gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --remove-label "in-progress-triggered"
             
-            // 1. Lấy thông tin Issue toàn diện bao gồm cả dự án liên kết (Project Items)
-            const queryIssue = `
-              query($owner: String!, $repo: String!, $number: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  issue(number: $number) {
-                    projectItems(first: 5) {
-                      nodes {
-                        id
-                        project {
-                          id
-                          title
-                          fields(first: 20) {
-                            nodes {
-                              ... on ProjectV2FieldCommon {
-                                id
-                                name
-                              }
-                              ... on ProjectV2SingleSelectField {
-                                id
-                                name
-                                options {
-                                  id
-                                  name
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            `;
-            
-            const issueData = await github.graphql(queryIssue, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              number: issueNumber
-            });
-            
-            const items = issueData.repository.issue.projectItems.nodes;
-            if (items.length === 0) {
-              console.log("Issue này chưa được gắn vào Project nào cả. Hãy add Project trước khi tạo nhánh.");
-              return;
-            }
-            
-            // 2. Chạy qua từng project đang gắn với Issue để đổi sang "In progress"
-            for (const item of items) {
-              const projectItemId = item.id; // Đã sửa lỗi chính tả tên biến ở đây
-              const statusField = item.project.fields.nodes.find(f => f.name === 'Status');
-              
-              if (!statusField || !statusField.options) {
-                console.log(`Không tìm thấy trường 'Status' ở dự án: ${item.project.title}`);
-                continue;
-              }
-              
-              // Tìm ID của lựa chọn có tên là "In progress"
-              const inProgressOption = statusField.options.find(o => o.name.toLowerCase() === 'in progress');
-              
-              if (!inProgressOption) {
-                console.log("Bảng dự án của bạn không có tùy chọn nào tên là 'In progress'.");
-                continue;
-              }
-              
-              // Cập nhật giá trị cột ngay lập tức trên bảng
-              const mutationUpdate = `
-                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                  updateProjectV2ItemFieldValue(input: {
-                    projectId: $projectId,
-                    itemId: $itemId,
-                    fieldId: $fieldId,
-                    value: { singleSelectOptionId: $optionId }
-                  }) {
-                    projectV2Item { id }
-                  }
-                }
-              `;
-              
-              await github.graphql(mutationUpdate, {
-                projectId: item.project.id,
-                itemId: projectItemId, // Đã sửa tên biến đồng bộ với bên trên
-                fieldId: statusField.id,
-                optionId: inProgressOption.id
-              });
-              
-              console.log(`Đã kéo thành công Issue #${issueNumber} sang 'In progress' trên bảng: ${item.project.title}`);
-            }
+            echo "Đã gửi tín hiệu đồng bộ hóa trạng thái thành công!"
+          else
+            echo "Tên nhánh không bắt đầu bằng số hiệu Issue theo định dạng 'số-tên'. Bỏ qua quy trình."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
