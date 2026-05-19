@@ -1,7 +1,7 @@
 name: Auto Move Issue to In Progress on Branch Create
 
 on:
-  create: # Kích hoạt khi có nhánh mới được tạo
+  create: # Kích hoạt khi bạn bấm tạo nhánh mới
 
 permissions:
   issues: write
@@ -11,26 +11,24 @@ jobs:
   move-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Trích xuất số Issue và di chuyển card
+      - name: Trigger Update Issue via CLI
         run: |
-          # 1. Lấy tên nhánh vừa tạo từ biến hệ thống
           BRANCH_NAME="${{ github.event.ref }}"
-          echo "Nhánh vừa tạo là: $BRANCH_NAME"
+          echo "Nhánh vừa được tạo: $BRANCH_NAME"
           
-          # 2. Sử dụng Regex để kiểm tra cấu trúc tên nhánh (Ví dụ: "9-final" -> trích xuất số 9)
+          # Kiểm tra nếu nhánh bắt đầu bằng số (Ví dụ: 9-final)
           if [[ "$BRANCH_NAME" =~ ^([0-9]+)- ]]; then
             ISSUE_NUMBER="${BASH_REMATCH[1]}"
-            echo "Phát hiện số hiệu Issue hợp lệ: #$ISSUE_NUMBER"
+            echo "Phát hiện số Issue: #$ISSUE_NUMBER"
             
-            # 3. Sử dụng GitHub CLI để gán nhãn tạm thời hoặc cập nhật ngầm Issue nhằm kích hoạt trigger đồng bộ
-            gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --add-label "in-progress-triggered"
+            # Tạo một cái label tạm thời để ép Issue phải cập nhật dữ liệu
+            gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --add-label "bug"
+            # Xóa luôn cái label đó đi để giữ Issue sạch sẽ như cũ
+            gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --remove-label "bug"
             
-            # Tự động xóa nhãn tạm ngay sau đó để giữ giao diện Issue sạch sẽ
-            gh issue edit "$ISSUE_NUMBER" --repo "${{ github.repository }}" --remove-label "in-progress-triggered"
-            
-            echo "Đã gửi tín hiệu đồng bộ hóa trạng thái thành công!"
+            echo "Đã ép đồng bộ trạng thái Issue thành công!"
           else
-            echo "Tên nhánh không bắt đầu bằng số hiệu Issue theo định dạng 'số-tên'. Bỏ qua quy trình."
+            echo "Tên nhánh không bắt đầu bằng số hiệu Issue. Bỏ qua."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
