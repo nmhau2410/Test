@@ -2,6 +2,11 @@ name: Auto Move Issue to In Progress on Branch Create
 
 on:
   create: # Kích hoạt khi có bất kỳ nhánh (branch) mới nào được tạo
+  
+permissions: # Cấp quyền ghi dữ liệu cho GitHub Actions
+  issues: write
+  contents: read
+  
 
 jobs:
   move-issue:
